@@ -22,10 +22,29 @@ namespace UniMob.Core
         private static bool _dirty;
 
         /// <summary>
-        ///     Whether any atom is queued for actualization.
+        ///     Whether <see cref="Sync"/> has an atom to actualize. An atom that was deactivated,
+        ///     disposed or brought up to date while it waited in the queue is not work, and does not count.
         /// </summary>
         public static bool HasPendingWork =>
-            _updatingCurrentFrame.Count > 0 || _updatingNextFrame.Count > 0;
+            AnyWillActualize(_updatingCurrentFrame) || AnyWillActualize(_updatingNextFrame);
+
+        /// <summary>
+        ///     The atoms <see cref="Sync"/> will actualize, each listed once, in queue order. A new
+        ///     snapshot on every read, meant for diagnostics.
+        /// </summary>
+        public static IReadOnlyList<AtomBase> PendingAtoms
+        {
+            get
+            {
+                var seen = new HashSet<AtomBase>();
+                var pending = new List<AtomBase>();
+
+                CollectPending(_updatingCurrentFrame, seen, pending);
+                CollectPending(_updatingNextFrame, seen, pending);
+
+                return pending;
+            }
+        }
 
         private void Update()
         {
@@ -74,7 +93,7 @@ namespace UniMob.Core
             {
                 var atom = _updatingCurrentFrame.Dequeue();
 
-                if (atom.options.Has(AtomOptions.Active) && atom.state != AtomState.Actual)
+                if (WillActualize(atom))
                 {
                     atom.Actualize();
                 }
@@ -85,6 +104,39 @@ namespace UniMob.Core
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             ProfilerSampler.End();
 #endif
+        }
+
+        private static bool WillActualize(AtomBase atom)
+        {
+            return atom.options.Has(AtomOptions.Active) && atom.state != AtomState.Actual;
+        }
+
+        private static bool AnyWillActualize(Queue<AtomBase> queue)
+        {
+            foreach (var atom in queue)
+            {
+                if (WillActualize(atom))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static void CollectPending(
+            Queue<AtomBase> queue,
+            HashSet<AtomBase> seen,
+            List<AtomBase> pending
+        )
+        {
+            foreach (var atom in queue)
+            {
+                if (WillActualize(atom) && seen.Add(atom))
+                {
+                    pending.Add(atom);
+                }
+            }
         }
     }
 }
