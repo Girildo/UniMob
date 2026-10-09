@@ -1,6 +1,9 @@
+using System.Collections;
 using System.Linq;
 using NUnit.Framework;
 using UniMob.Core;
+using UnityEditor;
+using UnityEngine.TestTools;
 
 namespace UniMob.Tests
 {
@@ -123,6 +126,51 @@ namespace UniMob.Tests
             source.Value = 3;
 
             Assert.That(Names(), Is.EqualTo(new[] { "requeued" }));
+        }
+
+        [UnityTest]
+        public IEnumerator WorkQueuedBeforePlayMode_RunsOnceItStarts()
+        {
+            Assume.That(
+                EditorSettings.enterPlayModeOptionsEnabled
+                    && (
+                        EditorSettings.enterPlayModeOptions
+                        & EnterPlayModeOptions.DisableDomainReload
+                    ) != 0,
+                "a domain reload empties the queues along with everything else"
+            );
+
+            var source = Atom.Value(Lifetime, 0);
+            var runs = 0;
+            Atom.Reaction(
+                Lifetime,
+                () =>
+                {
+                    var unused = source.Value;
+                    runs++;
+                },
+                debugName: "queued in edit mode"
+            );
+
+            source.Value = 1;
+            Assume.That(AtomScheduler.HasPendingWork, Is.True);
+
+            yield return new EnterPlayMode();
+            yield return null;
+            yield return null;
+
+            var runsInPlayMode = runs;
+            var pendingInPlayMode = Names();
+
+            yield return new ExitPlayMode();
+
+            Assert.That(
+                runsInPlayMode,
+                Is.EqualTo(2),
+                "the reaction queued in edit mode never ran in play mode; still pending: "
+                    + string.Join(", ", pendingInPlayMode)
+            );
+            Assert.That(pendingInPlayMode, Is.Empty);
         }
 
         private static string[] Names()

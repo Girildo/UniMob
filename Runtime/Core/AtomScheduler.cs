@@ -62,7 +62,19 @@ namespace UniMob.Core
         private static void Initialize()
         {
             _current = null;
-            _dirty = false;
+
+            // With domain reload disabled the queues outlive the previous session. An atom still
+            // waiting in them is owed a Sync: invalidating it again will not queue it a second time.
+            _dirty = HasPendingWork;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void ResumePendingWork()
+        {
+            if (_dirty)
+            {
+                EnsureRunning();
+            }
         }
 
         internal static void Actualize(AtomBase atom)
@@ -70,12 +82,7 @@ namespace UniMob.Core
             _dirty = true;
             _updatingNextFrame.Enqueue(atom);
 
-            if (ReferenceEquals(_current, null) && Application.isPlaying)
-            {
-                var go = new GameObject(nameof(AtomScheduler));
-                _current = go.AddComponent<AtomScheduler>();
-                DontDestroyOnLoad(_current);
-            }
+            EnsureRunning();
         }
 
         public static void Sync()
@@ -104,6 +111,16 @@ namespace UniMob.Core
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             ProfilerSampler.End();
 #endif
+        }
+
+        private static void EnsureRunning()
+        {
+            if (ReferenceEquals(_current, null) && Application.isPlaying)
+            {
+                var go = new GameObject(nameof(AtomScheduler));
+                _current = go.AddComponent<AtomScheduler>();
+                DontDestroyOnLoad(_current);
+            }
         }
 
         private static bool WillActualize(AtomBase atom)
