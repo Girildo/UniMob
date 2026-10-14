@@ -21,6 +21,12 @@ namespace UniMob.Core
         private static AtomScheduler _current;
         private static bool _dirty;
 
+        /// <summary>
+        ///     Whether any atom is queued for actualization.
+        /// </summary>
+        public static bool HasPendingWork =>
+            _updatingCurrentFrame.Count > 0 || _updatingNextFrame.Count > 0;
+
         private void Update()
         {
             if (!_dirty)
